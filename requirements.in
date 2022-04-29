@@ -1,0 +1,13 @@
+# production
+requests[socks]
+logzero
+tqdm
+werkzeug
+pyquery
+
+# development
+pip-tools>=6.6.0
+flake8
+black
+isort
+ipdb

@@ -1,5 +1,6 @@
 from os import getcwd, listdir, makedirs
-from os.path import isfile, join
+from os.path import exists, isfile, join
+from shutil import rmtree
 
 import click
 from logzero import logger
@@ -83,16 +84,21 @@ def main(brands, debug):
                 extension = model_rom.get("extension")
                 logger.debug(f"{link} {checksum} {rom_name}.{extension}")
 
-                # if images are exist, skip dump
                 extracted_dir = join(
                     IMAGES_DIR, brand, model, version, rom_name
                 )
-                if isfile(join(extracted_dir, "boot.img")):
-                    logger.debug(f"{version} images are already extracted")
-                    continue
-
                 download_dir = join(TEMPS_DIR, brand, model, version)
                 rom_file_path = join(download_dir, f"{rom_name}.{extension}")
+
+                # if images are exist, skip and clean up
+                if isfile(join(extracted_dir, "boot.img")):
+                    logger.debug("Images are already extracted")
+
+                    if exists(download_dir):
+                        logger.debug("Clean up...")
+                        rmtree(download_dir)
+
+                    continue
 
                 # if rom file is exist and support checksum, skip download
                 algorithm = model_rom.get("algorithm")
@@ -101,14 +107,20 @@ def main(brands, debug):
                     and algorithm
                     and calc_checksum(rom_file_path, algorithm) == checksum
                 ):
-                    logger.debug(f"{version} rom is already downloaded")
+                    logger.debug("ROM is already downloaded")
                 else:
                     makedirs(download_dir, exist_ok=True)
                     # TODO split range download
                     download_file(link, rom_file_path, version)
 
+                logger.debug("Processing dump images...")
                 makedirs(extracted_dir, exist_ok=True)
                 dump_images(rom_file_path, extracted_dir)
+
+                # TODO check dump result
+                # clean up
+                logger.debug("Clean up...")
+                rmtree(download_dir)
 
 
 if __name__ == "__main__":

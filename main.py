@@ -1,3 +1,5 @@
+import signal
+import sys
 from os import getcwd, listdir, makedirs
 from os.path import exists, isfile, join
 from shutil import rmtree
@@ -35,8 +37,15 @@ def get_brands():
     return manufacturers
 
 
-# TODO safe exit when dumping images
-extracting_path = None
+# safe exit when dumping images path
+dumping_path = None
+
+
+def safe_exit(signum, frame):
+    logger.info("Exiting...")
+    if dumping_path:
+        rmtree(dumping_path)
+    sys.exit()
 
 
 @click.command()
@@ -56,6 +65,11 @@ def main(brands, debug):
         logger.setLevel("DEBUG")
     else:
         logger.setLevel("INFO")
+
+    global dumping_path
+
+    signal.signal(signal.SIGINT, safe_exit)
+    signal.signal(signal.SIGTERM, safe_exit)
 
     supported_brands = get_brands()
     logger.debug(f"Supported brands: {supported_brands}")
@@ -95,7 +109,7 @@ def main(brands, debug):
                     logger.debug("Images are already extracted")
 
                     if exists(download_dir):
-                        logger.debug("Clean up...")
+                        logger.debug("Clean up ROM...")
                         rmtree(download_dir)
 
                     continue
@@ -115,6 +129,7 @@ def main(brands, debug):
 
                 logger.debug("Processing dump images...")
                 makedirs(extracted_dir, exist_ok=True)
+                dumping_path = extracted_dir
                 dump_images(rom_file_path, extracted_dir)
 
                 # TODO check dump result

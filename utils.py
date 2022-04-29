@@ -15,6 +15,10 @@ def true_or_quit(condition, message):
         sys.exit(1)
 
 
+def not_empty(s):
+    return s and s.strip()
+
+
 def calc_divisional_range(file_size, chuck):
     length = file_size // chuck
     flag = 0
@@ -56,7 +60,7 @@ def unpack_file(file_path, unarchive_dir):
 
 
 def dump_images(file_path, output_dir):
-    subprocess.run(
+    return subprocess.run(
         [
             "./payload-dumper-go",
             "-partitions",

@@ -8,7 +8,7 @@ import click
 from logzero import logger
 from werkzeug.utils import import_string
 
-from utils import calc_checksum, download_file, dump_images
+from utils import calc_checksum, download_file, dump_images, not_empty
 
 # os.path.dirname(os.path.abspath(__file__))
 CURRENT_DIR = getcwd()
@@ -39,6 +39,7 @@ def get_brands():
 
 # safe exit when dumping images path
 dumping_path = None
+dumping_pid = None
 
 
 def safe_exit(signum, frame):
@@ -52,7 +53,26 @@ def safe_exit(signum, frame):
 @click.option(
     "-b",
     "--brands",
-    help="Select brands",
+    help="Select partitions brands, comma-separated",
+    default="",
+)
+@click.option(
+    "-m",
+    "--models",
+    help="Select partitions models, comma-separated",
+    default="",
+)
+@click.option(
+    "-v",
+    "--versions",
+    help="Select partitions versions, comma-separated",
+    default="",
+)
+@click.option(
+    "-f",
+    "--force-dump/--no-force-dump",
+    default=False,
+    help="Force dump ROM",
 )
 @click.option(
     "-d",
@@ -60,7 +80,7 @@ def safe_exit(signum, frame):
     default=False,
     help="Enable debug mode",
 )
-def main(brands, debug):
+def main(brands, models, versions, force_dump, debug):
     if debug:
         logger.setLevel("DEBUG")
     else:
@@ -74,8 +94,12 @@ def main(brands, debug):
     supported_brands = get_brands()
     logger.debug(f"Supported brands: {supported_brands}")
 
-    selected_brands = brands.lower().split(",") if brands else []
+    selected_brands = list(filter(not_empty, brands.lower().split(",")))
     logger.debug(f"Selected brands: {selected_brands}")
+    selected_models = list(filter(not_empty, models.lower().split(",")))
+    logger.debug(f"Selected models: {selected_models}")
+    selected_versions = list(filter(not_empty, versions.lower().split(",")))
+    logger.debug(f"Selected versions: {selected_versions}")
 
     for brand in supported_brands:
         if selected_brands and brand.lower() not in selected_brands:
@@ -86,10 +110,41 @@ def main(brands, debug):
 
         roms = brand_module.main()
         for (model, model_roms) in roms.items():
+            model_bypass = True
+
+            if selected_models:
+                model_lower = model.lower()
+
+                for selected_model in selected_models:
+                    if selected_model in model_lower:
+                        model_bypass = False
+                        break
+            else:
+                model_bypass = False
+
+            if model_bypass:
+                continue
+
             logger.info(f"Processing model: {model}")
 
             for model_rom in model_roms:
                 version = model_rom.get("version")
+
+                version_bypass = True
+
+                if selected_versions:
+                    version_lower = version.lower()
+
+                    for selected_version in selected_versions:
+                        if selected_version in version_lower:
+                            version_bypass = False
+                            break
+                else:
+                    version_bypass = False
+
+                if version_bypass:
+                    continue
+
                 logger.info(f"Processing version: {version}")
 
                 link = model_rom.get("link")
@@ -105,7 +160,7 @@ def main(brands, debug):
                 rom_file_path = join(download_dir, f"{rom_name}.{extension}")
 
                 # if images are exist, skip and clean up
-                if isfile(join(extracted_dir, "boot.img")):
+                if not force_dump and isfile(join(extracted_dir, "boot.img")):
                     logger.debug("Images are already extracted")
 
                     if exists(download_dir):
@@ -125,14 +180,16 @@ def main(brands, debug):
                 else:
                     makedirs(download_dir, exist_ok=True)
                     # TODO split range download
+                    # TODO failed retry
                     download_file(link, rom_file_path, version)
 
                 logger.debug("Processing dump images...")
                 makedirs(extracted_dir, exist_ok=True)
                 dumping_path = extracted_dir
-                dump_images(rom_file_path, extracted_dir)
-
                 # TODO check dump result
+                dump_task = dump_images(rom_file_path, extracted_dir)
+                dumping_path = None
+
                 # clean up
                 logger.debug("Clean up...")
                 rmtree(download_dir)
